@@ -1,6 +1,7 @@
 import os
 import random
 import discord
+import sqlite3
 
 from discord.ext import commands
 from dotenv import load_dotenv
@@ -91,6 +92,9 @@ async def list(ctx):
 
 @bot.command(name='cookie', help='Alimenta al poro con una cookie')
 async def cookie(ctx):
+    # Nombre del donante
+    donor = str(ctx.author.name)
+
     poro_quotes = [
         'Ñam, ñam, Ñam',
         'Quiero más',
@@ -98,22 +102,78 @@ async def cookie(ctx):
         '¿Solo una?',
         'Gracias por la cookie!',
         'Rico, rico',
-        'A poro le gustan las cookies :)'
+        'A poro le gustan las cookies :)',
+        'Poro ama a '+ donor + ' :3'
     ]
     response = random.choice(poro_quotes)
-    await ctx.send("Has dado una cookie al poro. " + response)
 
-    # Lee la cantidad de cookies comidas del fichero
-    with open("cookies.txt") as fichero:
-        cookies = fichero.readlines()
+    await ctx.send(donor + " ha dado una cookie al poro. " + response)
 
-    cookies = (int(cookies[0]) + 1)
+    try:
+        # Connexión con la BBDD
+        sqliteConnection = sqlite3.connect('Poro.db')
+        cursor = sqliteConnection.cursor()
+        print("Database connectada con éxito")
 
-    # Sobreescribe la cantidad de cookies comidas en el fichero
-    fichero = open("cookies.txt", "w")
-    fichero.write(str(cookies))
-    fichero.close()
+        # Comprueba si el Donor ya ha dado cookies anteriormente
+        query = "SELECT * from cookies WHERE donor = ?"
+        values = (donor)
+        cursor.execute(query, (values,))
+        records = cursor.fetchall()
+        
+        
+        if(records):
+            # Si ya ha dado anteriormente datos, sumamos una cookie a las cookies donadas
+            query = "UPDATE cookies SET quantity = quantity + 1"
+            cursor.execute(query)
+            sqliteConnection.commit()
+        else:
+            # Si no ha dado cookies anteriormente, se añade por primera vez y se le pone valor 1
+            print("No hay datos")
+            query = "INSERT INTO cookies (donor, quantity) VALUES (?, ?);"
+            values = (donor, 1)
+            cursor.execute(query, values)
+            sqliteConnection.commit()
 
-    await ctx.send("Poro ha comido " + str(cookies) + " cookies hasta el momento")
+        query = "SELECT sum(Quantity) from cookies"
+        cursor.execute(query)
+        records = cursor.fetchall()
+        
+        # Cantidad total de cookies comidas.
+        quantity = records[0][0]
+
+        print("Insert con éxito")
+        cursor.close()
+    
+    except sqlite3.Error as error:
+        print("Fallo al insertar datos a la tabla sqlite")
+    finally:
+        if sqliteConnection:
+            sqliteConnection.close()
+            print("La connexión SQLite ha sido cerrada.")
+
+    await ctx.send("Poro ha comido " + str(quantity) + " cookies hasta el momento. Gracias por tu aportación.")
+
+
+@bot.command(name='donantes', help='Muestra la lista de donantes de cookies')
+async def cookie(ctx):
+    try:
+        # Connexión con la BBDD
+        sqliteConnection = sqlite3.connect('Poro.db')
+        cursor = sqliteConnection.cursor()
+        
+        query = "SELECT * from cookies ORDER BY quantity DESC"
+        cursor.execute(query)
+        records = cursor.fetchall()
+        for row in records:
+            donacion = str(row[0]) + " ha donado " + str(row[1]) + " cookies."
+            await ctx.send(donacion)
+        cursor.close()
+    except sqlite3.Error as error:
+        print("Fallo al insertar datos a la tabla sqlite")
+    finally:
+        if sqliteConnection:
+            sqliteConnection.close()
+            print("La connexión SQLite ha sido cerrada.")
 
 bot.run(TOKEN)
